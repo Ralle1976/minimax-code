@@ -48,7 +48,11 @@ afterEach(async () => {
   await rm(workspaceDir, { recursive: true, force: true });
 });
 
-describe("WSL attachment paths", () => {
+// The suite simulates a WSL host by mocking platform/linux and feeding the host
+// temp path back as mocked wslpath output. That fixture only doubles as a Linux
+// absolute path on POSIX hosts; on native Windows it is drive-letter style, so
+// the production posix.isAbsolute check in resolveWslPath correctly rejects it.
+describe.skipIf(process.platform === "win32")("WSL attachment paths", () => {
   it.each([
     windowsPath,
     `"${windowsPath}"`,
