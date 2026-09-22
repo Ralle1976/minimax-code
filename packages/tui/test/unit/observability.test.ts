@@ -83,9 +83,14 @@ describe('Minimax Code observability', () => {
     });
     await observability.flush();
 
-    expect(resolveTuiObservabilityDirectory('/data')).toBe('/data/v2/observability/mcode');
+    // The directory is joined with the host path separator; compare normalized.
+    expect(resolveTuiObservabilityDirectory('/data').replaceAll('\\', '/')).toBe(
+      '/data/v2/observability/mcode',
+    );
     expect(writes).toHaveLength(1);
-    expect(writes[0]?.path).toBe('/data/v2/observability/mcode/mcode-observability-900-42.jsonl');
+    expect(writes[0]?.path.replaceAll('\\', '/')).toBe(
+      '/data/v2/observability/mcode/mcode-observability-900-42.jsonl',
+    );
     const events = writes
       .flatMap((write) => write.content.trim().split('\n'))
       .map((line) => JSON.parse(line) as Record<string, unknown>);
@@ -208,7 +213,8 @@ describe('Minimax Code observability', () => {
       await vi.advanceTimersByTimeAsync(1_000);
 
       expect(append).toHaveBeenCalledWith(
-        expect.stringContaining('/v2/observability/mcode/'),
+        // The path is joined with the host separator; accept both forms.
+        expect.stringMatching(/[/\\]v2[/\\]observability[/\\]mcode[/\\]/),
         expect.stringContaining('"phase":"runtime.initialize"'),
       );
       await observability.flush();
