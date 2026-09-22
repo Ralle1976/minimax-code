@@ -147,7 +147,9 @@ describe("WSL attachment paths", () => {
     },
   );
 
-  it("keeps native attachment resolution working in WSL without a subprocess", async () => {
+  // A native WSL-side path cannot be built from a Windows host temp dir: the
+  // fixture resolves to a drive-letter path, so the conversion path applies.
+  it.skipIf(skipWslConversion)("keeps native attachment resolution working in WSL without a subprocess", async () => {
     await expect(
       resolveTuiAttachment("截图.png", { workspaceDir }),
     ).resolves.toMatchObject({ filePath: imagePath });
