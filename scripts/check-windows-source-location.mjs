@@ -44,8 +44,30 @@ export function checkWindowsSourceLocation({
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (error) {
-    const detail = error instanceof Error ? ` (${error.message})` : "";
-    return fail(`Windows could not verify the checkout volume${detail}.`);
+    // `fsutil fsinfo volumeinfo` denies non-elevated processes on stock
+    // Windows 11 (exit 1, "Access is denied"), which would reject a checkout
+    // that is on local NTFS. Fall back to one CIM query whose FileSystem and
+    // DriveType properties are locale-invariant (drive type 3 = local fixed),
+    // reusing the checks below as the single source of truth.
+    try {
+      const cim = execFile(
+        "powershell",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `$d = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${volume}'"; Write-Output ($d.FileSystem + ' ' + $d.DriveType)`,
+        ],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      );
+      const [fsName = "", driveNumber = ""] = String(cim).trim().split(/\s+/u);
+      driveType = `DriveType : ${driveNumber === "3" ? "DRIVE_FIXED" : "DRIVE_OTHER"}`;
+      volumeInfo = `File System : ${fsName}`;
+    } catch (fallbackError) {
+      const detail = fallbackError instanceof Error ? ` (${fallbackError.message})` : "";
+      const viaFsutil = error instanceof Error ? ` (${error.message})` : "";
+      return fail(`Windows could not verify the checkout volume via fsutil or WMI${viaFsutil}${detail}.`);
+    }
   }
 
   if (!allowNonFixed && !/:\s*DRIVE_FIXED(?:\r?\n|$)/iu.test(driveType)) {
