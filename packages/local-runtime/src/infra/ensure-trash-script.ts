@@ -130,7 +130,9 @@ export function inspectTrashRuntime(
         trashRuntimeCache.set(cacheKey, { scriptHash, launcherHash, verdict });
         return verdict;
       }
-      if ((statSync(scriptPath).mode & 0o111) === 0) {
+      if (process.platform !== 'win32' && (statSync(scriptPath).mode & 0o111) === 0) {
+        // NTFS cannot store Unix execute bits (chmod is a no-op for them), so
+        // the check would always fail on a Windows host simulating POSIX.
         // Do not cache mode failures: ensureTrashScript may repair the execute
         // bit without changing the content hash on the next tick.
         return { available: false, reason: 'mavis-trash is not executable' };
