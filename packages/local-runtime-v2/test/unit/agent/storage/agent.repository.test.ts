@@ -10,6 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 import {
@@ -1405,7 +1406,27 @@ function registerCanonicalAvatarPublicationTests(): void {
   });
 }
 
-describe("DrizzleAgentRepository Desktop Agent directory safety", () => {
+// Windows requires Developer Mode (or admin) to create symlinks. Probed lazily
+// at suite registration and memoized: the gated cases create real links.
+let symlinkPrivilege: boolean | undefined;
+function canSymlink(): boolean {
+  if (symlinkPrivilege === undefined) {
+    const dir = mkdtempSync(join(tmpdir(), "symlink-probe-"));
+    try {
+      symlinkSync(join(dir, "target"), join(dir, "link"), "dir");
+      symlinkPrivilege = true;
+    } catch {
+      symlinkPrivilege = false;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  return symlinkPrivilege;
+}
+
+describe.skipIf(process.platform === "win32" && !canSymlink())(
+  "DrizzleAgentRepository Desktop Agent directory safety",
+  () => {
   it("writes through a linked agents root to the resolved target", async () => {
     const { repository, dataDir } = await createRepository();
     const outsideDir = await mkdtemp(
