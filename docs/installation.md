@@ -43,6 +43,17 @@ For a source build, you need Git, Node.js 22.19+ (22.x), 24.2+ (24.x), 25, or 26
 
 On Windows, check out this repository on a local NTFS volume before running `pnpm install`. The repository uses pnpm workspace links for vendored packages, and those links require NTFS junctions. FAT32/exFAT volumes, network shares, and other non-local Windows volumes cannot create the required junctions. The preflight command below verifies the volume and stops with a clear message before pnpm creates workspace links; run it immediately before `pnpm install`. A local NTFS volume can still contain a cloud-synced folder, which the preflight cannot identify reliably; keep the checkout outside OneDrive, Google Drive, Dropbox, and similar synced folders.
 
+If `pnpm install` stops while linking workspace packages with an error like the following, the checkout volume cannot provide the required junctions even when it looks local:
+
+```text
+ENOENT: no such file or directory, stat '…\node_modules\@earendil-works\pi-ai'
+    at async renameOverwrite (…/pnpm/dist/pnpm.cjs:…)
+    at async forceSymlink (…/pnpm/dist/pnpm.cjs:…)
+    at async symlinkDirectRootDependency (…/pnpm/dist/pnpm.cjs:…)
+```
+
+Cloud-mirrored folders (Google Drive, OneDrive, Dropbox) and some network mounts fail junction creation this way. The `stat` path names one workspace dependency and varies; searching for `forceSymlink` or `symlinkDirectRootDependency` matches this failure. Nothing is broken in the checkout: move it to a local NTFS path outside synced folders and re-run `pnpm install`. To check a volume manually, run `fsutil fsinfo volumeinfo <drive>:` from an elevated shell (it should report `NTFS`; on some systems it answers non-elevated shells with `Access is denied`) or run the preflight command below, which owns this repository's volume detection.
+
 Node 24.0 and 24.1 are unsupported: their bundled libuv can return inconsistent Windows file identity metadata, causing safe configuration reads to fail. [Node 24.2.0](https://nodejs.org/en/blog/release/v24.2.0) includes libuv 1.51.0 with the [upstream fix](https://github.com/libuv/libuv/commit/82cdfb75f). Use a current patch release of a supported Node line.
 
 ```bash
