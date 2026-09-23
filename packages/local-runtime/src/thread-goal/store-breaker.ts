@@ -6,7 +6,7 @@ import type {
   ThreadGoalStatusReason,
 } from '@mavis/goal';
 
-import type { DatabaseLike } from '../persistence/db.js';
+import { runInImmediateTransaction, type DatabaseLike } from '../persistence/db.js';
 import { rowToThreadGoalState, type ThreadGoalDbRow } from './store-row.js';
 
 type BreakerAction = 'none' | 'nudge' | 'pause';
@@ -152,5 +152,5 @@ export function updateThreadGoalBreaker(
     };
   };
 
-  return db.transaction ? db.transaction(apply).immediate() : apply();
+  return runInImmediateTransaction(db, apply);
 }
