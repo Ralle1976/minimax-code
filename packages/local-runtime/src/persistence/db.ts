@@ -500,16 +500,55 @@ export function withLocalRuntimeDb<T>(dataDir: DataDirInput, fn: (db: DatabaseLi
   return fn(openLocalRuntimeDb(dataDir));
 }
 
-export function runInImmediateTransaction<T>(db: DatabaseLike, fn: () => T): T {
-  if (db.transaction) return db.transaction(fn).immediate();
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const result = fn();
-    db.exec('COMMIT');
-    return result;
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
+const IMMEDIATE_TX_BUDGET_MS = 10_000;
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function isBusy(error: unknown): boolean {
+  return error instanceof Error && Reflect.get(error, 'code') === 'SQLITE_BUSY';
+}
+
+/**
+ * Retry only transaction admission: a callback that has started is never
+ * replayed (mirrors runWithWriteLock on the v2 stack). Synchronous by
+ * contract, so contention waits use short bounded sleeps.
+ */
+export function runInImmediateTransaction<T>(
+  db: DatabaseLike,
+  fn: () => T,
+  options: { readonly timeoutMs?: number } = {},
+): T {
+  const budget = options.timeoutMs ?? IMMEDIATE_TX_BUDGET_MS;
+  if (!Number.isFinite(budget) || budget <= 0) throw new RangeError('Invalid transaction budget');
+  const deadline = performance.now() + budget;
+  for (let attempt = 0; ; attempt++) {
+    let entered = false;
+    const guarded = () => {
+      entered = true;
+      return fn();
+    };
+    try {
+      if (db.transaction) return db.transaction(guarded).immediate();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const result = guarded();
+        db.exec('COMMIT');
+        return result;
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+    } catch (error) {
+      if (entered || !isBusy(error)) throw error;
+      const wait = Math.min(
+        deadline - performance.now(),
+        25 * 2 ** Math.min(attempt, 3) + Math.random() * 25,
+      );
+      if (wait <= 0) throw error;
+      sleepSync(Math.ceil(wait));
+    }
   }
 }
 
