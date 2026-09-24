@@ -3351,6 +3351,7 @@
     "test/public-artifact.test.mjs",
     "test/smoke.test.mjs",
     "test/source-sync.test.mjs",
+    "test/sqlite-immediate-transaction-retry.test.ts",
     "test/sqlite-message-contention.test.ts",
     "test/vitest-suites.json",
     "test/windows-contract.test.mjs",
