@@ -1,3 +1,4 @@
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { SemanticReplayRegistry } from '../packages/local-runtime-v2/src/service/turn-system/agent-host/events/semantic-replay-registry.js';
 import { createHash } from 'node:crypto';
 import { createCanonicalHistoryScanner, scanCanonicalHistoryArtifacts } from '../packages/local-runtime-v2/src/service/session-system/messages/history/mutation/canonical-history-scanner.js';
@@ -1448,6 +1449,24 @@ describe('internal history snapshot handoff', () => {
   });
 });
 
+// Windows requires Developer Mode (or admin) to create symlinks. Probed lazily
+// and memoized: the warm-scan lineage case creates a real link.
+let symlinkPrivilege: boolean | undefined;
+function canSymlink(): boolean {
+  if (symlinkPrivilege === undefined) {
+    const dir = mkdtempSync(join(tmpdir(), 'symlink-probe-'));
+    try {
+      symlinkSync(join(dir, 'target'), join(dir, 'link'), 'dir');
+      symlinkPrivilege = true;
+    } catch {
+      symlinkPrivilege = false;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  return symlinkPrivilege;
+}
+
 describe('incremental history index scanning', () => {
   const row = (id: string, content = '中文🙂') => ({
     message_id: `msg-user-v1-${id}`, turn_id: `turn-${id}`,
@@ -1551,7 +1570,7 @@ describe('incremental history index scanning', () => {
       expect((await scan(paths, files)).locators[0]?.messageId).toBe('msg-user-v1-z');
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
-  it('continues checking snapshot revisions, lineage and symlinks after warm scans', async () => {
+  it.skipIf(process.platform === 'win32' && !canSymlink())('continues checking snapshot revisions, lineage and symlinks after warm scans', async () => {
     await fixture(async ({paths, compare}) => {
       const parent = [row('a')];
       const parentPath = join(paths.snapshotsPath, 'g000000000000--compact.jsonl');
