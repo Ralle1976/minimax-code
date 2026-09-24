@@ -163,6 +163,7 @@
       "packages/local-runtime/test/unit/file-api-save.test.ts",
       "test/history-processing.test.ts",
       "test/sqlite-message-contention.test.ts",
+      "test/sqlite-immediate-transaction-retry.test.ts",
       "packages/tui/test/unit/tui-feature-viewport-contract.test.ts",
       "packages/tui/test/unit/tui-session-history-flow.test.ts",
       "packages/tui/test/unit/tui-session-mutation-panels.test.ts",

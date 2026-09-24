@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer';
 import { closeSync, openSync, readSync, statSync, truncateSync } from 'node:fs';
 
 import { logger } from '../../common/logger.js';
-import type { DatabaseLike } from '../../persistence/db.js';
+import { runInImmediateTransaction, type DatabaseLike } from '../../persistence/db.js';
 
 export class LocalSessionLedgerCommitUncertainError extends Error {
   override readonly cause: unknown;
@@ -17,8 +17,7 @@ export class LocalSessionLedgerCommitUncertainError extends Error {
 }
 
 export function runInTransaction<T>(db: DatabaseLike, fn: () => T): T {
-  if (!db.transaction) return fn();
-  return db.transaction(fn).immediate();
+  return runInImmediateTransaction(db, fn);
 }
 
 export function ledgerFileSizeSync(ledgerPath: string): number {
