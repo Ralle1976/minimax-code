@@ -194,7 +194,9 @@ describe("srt-macos backend", () => {
       // an empty dir under sandboxTempDir so git init/clone skip hook-template
       // copies (an empty env value no longer skips on git >= 2.53).
       env: {
-        GIT_TEMPLATE_DIR: "/tmp/session-1/git-templates-empty",
+        // Built with join() like the impl does (srt-macos.ts): a POSIX literal
+        // would assert the host separator instead of the wiring under test.
+        GIT_TEMPLATE_DIR: join("/tmp/session-1", "git-templates-empty"),
         ...baseEnv,
         MAVIS_TRASH_FORCE_MV: "1",
       },
