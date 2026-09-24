@@ -55,19 +55,23 @@ const steps = [
   { name: "build", script: "build", windows: true },
   { name: "check:standalone", script: "check:standalone", windows: true },
   { name: "test:artifact", script: "test:artifact", windows: true },
-  { name: "test:capabilities", script: "test:capabilities" },
+  // Includes the Windows PowerShell 5.1 regression suite (skipIf-gated off win32).
+  { name: "test:capabilities", script: "test:capabilities", windows: true },
   { name: "test:windows", script: "test:windows", platforms: ["win32"], windows: true },
   { name: "test:status-contract", script: "test:status-contract" },
   { name: "test:smoke", script: "test:smoke" },
   { name: "test:byok", script: "test:byok" },
-  // The permission facade uses POSIX process and filesystem semantics.
+  // The permission facade's POSIX-intent fixtures are host-deterministic since
+  // the policy-facade fixture fix, so the suite is green on win32 as well.
   {
     name: "test:policy",
     script: "test:policy",
-    platforms: ["darwin", "linux"],
+    platforms: ["darwin", "linux", "win32"],
+    windows: true,
   },
-  // Seatbelt sandbox backend; only macOS provides the native helper.
-  { name: "test:sandbox", script: "test:sandbox", platforms: ["darwin"] },
+  // Seatbelt sandbox backend is macOS-only; the mock-based cases run
+  // cross-platform (the real-backend describes gate themselves).
+  { name: "test:sandbox", script: "test:sandbox", platforms: ["darwin", "win32"], windows: true },
   {
     name: "test:release-package",
     command: ['scripts/verify-cli-release.mjs'],
