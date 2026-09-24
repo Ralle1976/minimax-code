@@ -1,7 +1,7 @@
 import { execFile as execFileCallback, type ExecFileException } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import type { Dirent, Stats } from 'node:fs';
-import { mkdir, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import {
   basename,
@@ -555,7 +555,7 @@ async function routeFileApi(
     }
   }
   if (method === 'POST' && tail === 'save') {
-    return routeFileSave(request, { readJsonBody, resolveBodyPath, readString, json });
+    return routeFileSave(request, { readJsonBody, resolveBodyPath: resolveBodyWritePath, readString, json });
   }
   if (method === 'POST' && tail === 'commit-message') {
     const body = await readJsonBody(request);
@@ -1970,6 +1970,80 @@ async function resolveWorkspacePath(workspace: string, child: string): Promise<s
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Resolve a write target that may not exist yet (save-as-create). Mirrors
+ * resolveExistingWorkspacePath's traversal and symlink-escape guards: every
+ * existing prefix must resolve inside the workspace, the missing remainder is
+ * created literally by the caller, and an existing-but-unresolvable prefix
+ * (dangling link) is rejected so writes cannot land through it.
+ */
+async function resolveCreateWorkspacePath(
+  workspace: string,
+  child: string,
+): Promise<ExistingWorkspacePathResult> {
+  const root = resolveWorkspace(workspace);
+  const target = resolveInside(root, child);
+  if (!target) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Path traversal denied',
+      code: 'PATH_TRAVERSAL',
+    };
+  }
+
+  let realRoot: string;
+  try {
+    realRoot = await realpath(root);
+  } catch (error) {
+    return { ok: false, ...classifyExistingPathError(error, 'workspace') };
+  }
+
+  const segments = relative(root, target).split(/[\/]/u).filter(Boolean);
+  let realBase = realRoot;
+  for (let i = 0; i < segments.length; i++) {
+    const prefix = join(root, ...segments.slice(0, i + 1));
+    try {
+      const real = await realpath(prefix);
+      if (!isPathInside(realRoot, real)) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'Path traversal denied',
+          code: 'PATH_TRAVERSAL',
+        };
+      }
+      realBase = real;
+    } catch {
+      try {
+        await lstat(prefix);
+      } catch {
+        return { ok: true, absolute: join(realBase, ...segments.slice(i)) };
+      }
+      return {
+        ok: false,
+        status: 400,
+        error: 'Path is not resolvable',
+        code: 'PATH_UNRESOLVABLE',
+      };
+    }
+  }
+  return { ok: true, absolute: realBase };
+}
+
+async function resolveBodyWritePath(
+  body: Record<string, unknown>,
+): Promise<{ absolute: string } | Response> {
+  const workspace = readString(body, 'workspace');
+  const filePath = readString(body, 'path');
+  if (!workspace) return json({ error: 'workspace is required' }, { status: 400 });
+  if (!filePath) return json({ error: 'path is required' }, { status: 400 });
+  const resolved = await resolveCreateWorkspacePath(workspace, filePath);
+  return resolved.ok
+    ? { absolute: resolved.absolute }
+    : json({ error: resolved.error, code: resolved.code }, { status: resolved.status });
 }
 
 async function resolveExistingWorkspacePath(
