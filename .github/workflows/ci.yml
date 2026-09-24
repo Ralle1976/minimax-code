@@ -75,6 +75,11 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
+      # The symlink-safety suites create real symlinks and skip without the
+      # Windows symlink privilege. GitHub-hosted Windows runners run elevated:
+      # enable Developer Mode so those cases run here instead of skipping.
+      - if: ${{ runner.os == 'Windows' }}
+        run: reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /v AllowDevelopmentWithoutDevLicense /t REG_DWORD /d 1 /f
       - run: pnpm install --frozen-lockfile
       # Keep the gate list in the shared verifier. Every OS builds and tests its
       # own native artifacts; only the duplicate compiler check is omitted.

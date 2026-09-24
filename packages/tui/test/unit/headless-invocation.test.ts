@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, realpath, rm, symlink, truncate, writeFile } from 'node:fs/promises';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -126,7 +127,26 @@ describe('headless invocation', () => {
     ).rejects.toThrow('cannot be combined');
   });
 
-  it('supports attachment-only input and resolves a symlinked file', async () => {
+// Windows requires Developer Mode (or admin) to create symlinks. Probed lazily
+// at suite registration and memoized: the gated cases create real links.
+let symlinkPrivilege: boolean | undefined;
+function canSymlink(): boolean {
+  if (symlinkPrivilege === undefined) {
+    const dir = mkdtempSync(join(tmpdir(), 'symlink-probe-'));
+    try {
+      symlinkSync(join(dir, 'target'), join(dir, 'link'), 'dir');
+      symlinkPrivilege = true;
+    } catch {
+      symlinkPrivilege = false;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  return symlinkPrivilege;
+}
+
+  // Needs the Windows symlink privilege (Developer Mode or admin).
+  it.skipIf(process.platform === 'win32' && !canSymlink())('supports attachment-only input and resolves a symlinked file', async () => {
     const cwd = await workspace();
     await writeFile(join(cwd, 'actual.txt'), 'hello');
     await symlink(join(cwd, 'actual.txt'), join(cwd, 'alias.txt'));

@@ -8,6 +8,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -659,7 +660,8 @@ describe("canonical Custom Agent file safety", () => {
     });
   });
 
-  it("reads an avatar below a linked Desktop agents root", async () => {
+  // Needs the Windows symlink privilege (Developer Mode or admin).
+  it.skipIf(process.platform === "win32" && !canSymlink())("reads an avatar below a linked Desktop agents root", async () => {
     const dataDir = await mkdtemp(
       join(tmpdir(), "canonical-agent-linked-root-"),
     );
@@ -696,7 +698,8 @@ describe("canonical Custom Agent file safety", () => {
 });
 
 describe("canonical Custom Agent avatar safety", () => {
-  it("reads a supported regular avatar but rejects path escapes and symlinks", async () => {
+  // Needs the Windows symlink privilege (Developer Mode or admin).
+  it.skipIf(process.platform === "win32" && !canSymlink())("reads a supported regular avatar but rejects path escapes and symlinks", async () => {
     const agentDir = await createAgentDir();
     await writeFile(
       join(agentDir, "avatar.png"),
@@ -896,8 +899,27 @@ describe("canonical Custom Agent avatar safety", () => {
   });
 });
 
+// Windows requires Developer Mode (or admin) to create symlinks. Probed lazily
+// at suite registration and memoized: the gated cases create real links.
+let symlinkPrivilege: boolean | undefined;
+function canSymlink(): boolean {
+  if (symlinkPrivilege === undefined) {
+    const dir = mkdtempSync(join(tmpdir(), "symlink-probe-"));
+    try {
+      symlinkSync(join(dir, "target"), join(dir, "link"), "dir");
+      symlinkPrivilege = true;
+    } catch {
+      symlinkPrivilege = false;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  return symlinkPrivilege;
+}
+
 describe("canonical Agent directory safety", () => {
-  it("follows linked Agent-directory segments and records their targets", async () => {
+  // Needs the Windows symlink privilege (Developer Mode or admin).
+  it.skipIf(process.platform === "win32" && !canSymlink())("follows linked Agent-directory segments and records their targets", async () => {
     process.env[DATA_DIR_SOURCE_ENV] = "mavis_env";
     const parentDir = await mkdtemp(
       join(tmpdir(), "canonical-agent-linked-config-"),
@@ -1094,7 +1116,8 @@ describe("canonical Agent directory safety", () => {
 });
 
 describe("canonical Agent directory safety", () => {
-  it("logs each logical link target once across stable reads", async () => {
+  // Needs the Windows symlink privilege (Developer Mode or admin).
+  it.skipIf(process.platform === "win32" && !canSymlink())("logs each logical link target once across stable reads", async () => {
     const dataDir = await mkdtemp(
       join(tmpdir(), "canonical-agent-link-dedup-"),
     );
@@ -1137,7 +1160,8 @@ describe("canonical Agent directory safety", () => {
     );
   });
 
-  it("persists a directory-link warning in the local-runtime disk log", async () => {
+  // Needs the Windows symlink privilege (Developer Mode or admin).
+  it.skipIf(process.platform === "win32" && !canSymlink())("persists a directory-link warning in the local-runtime disk log", async () => {
     process.env[DATA_DIR_SOURCE_ENV] = "mavis_env";
     const dataDir = await mkdtemp(
       join(tmpdir(), "canonical-agent-persistent-link-"),
@@ -1205,7 +1229,8 @@ describe("canonical Agent directory safety", () => {
     }
   });
 
-  it("reports dangling and non-directory links without a link-prohibition error", async () => {
+  // Needs the Windows symlink privilege (Developer Mode or admin).
+  it.skipIf(process.platform === "win32" && !canSymlink())("reports dangling and non-directory links without a link-prohibition error", async () => {
     process.env[DATA_DIR_SOURCE_ENV] = "mavis_env";
     const dataDir = await mkdtemp(
       join(tmpdir(), "canonical-agent-diagnostic-unresolved-"),
