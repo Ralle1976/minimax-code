@@ -72,7 +72,7 @@ const steps = [
     name: "test:release-package",
     command: ['scripts/verify-cli-release.mjs'],
     packageOnly: true,
-    platforms: ['darwin', 'linux'],
+    platforms: ['darwin', 'linux', 'win32'],
   },
 ];
 

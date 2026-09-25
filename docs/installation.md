@@ -20,7 +20,7 @@ mcode --version
 
 Keep optional dependencies enabled and allow the native SQLite installation
 script. The tag determines the installed version. GitHub archive installation is
-validated on Linux and macOS; Windows package acceptance is currently not run.
+validated on Linux, macOS and Windows.
 
 This archive uses the same `@minimax-ai/code` package name, `mcode` command and
 default user data directory as the official npm CLI. Installing it globally into
