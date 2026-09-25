@@ -15,6 +15,16 @@ const archive = path.resolve(process.env.MCODE_RELEASE_ARCHIVE);
 const sha256 = createHash('sha256').update(readFileSync(archive)).digest('hex');
 assert.equal(readFileSync(`${archive}.sha256`, 'utf8'), `${sha256}  ${path.basename(archive)}\n`, 'Release archive checksum mismatch');
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+// npm and the generated mcode launcher are .cmd shims on Windows, which
+// CreateProcess cannot execute without a shell (same class as #130/#351).
+function runFileSync(command, args, options) {
+  if (process.platform !== 'win32') return execFileSync(command, args, options);
+  const quoted = [command, ...args]
+    .map((arg) => (/[\s"]/u.test(arg) ? `"${arg.replaceAll('"', '""')}"` : arg))
+    .join(' ');
+  return execFileSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', quoted], options);
+}
+
 const temporary = mkdtempSync(path.join(tmpdir(), 'mcode-package-install-'));
 try {
   // No global install or real user profile is modified. Dependencies and the
@@ -36,7 +46,7 @@ try {
   });
   delete env.NODE_PATH;
   delete env.NODE_OPTIONS;
-  execFileSync('npm', ['install', '--global', '--prefix', prefix,
+  runFileSync('npm', ['install', '--global', '--prefix', prefix,
     '--registry=https://registry.npmjs.org/', '--include=optional', '--ignore-scripts=false',
     '--allow-scripts=better-sqlite3', '--no-audit', '--no-fund', archive],
   { cwd: home, env, stdio: 'inherit', timeout: 300000 });
@@ -50,10 +60,8 @@ try {
   assert.equal(release.tag, process.env.MCODE_RELEASE_TAG);
   assert.equal(release.revision, revision);
   const launcher =
-    process.platform === 'win32'
-      ? execFileSync(env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"${path.join(prefix, 'mcode.cmd')}" --version`], { cwd: home, env, encoding: 'utf8', timeout: 30000 })
-      : execFileSync(path.join(prefix, 'bin/mcode'), ['--version'], { cwd: home, env, encoding: 'utf8', timeout: 30000 });
-  const result = launcher;
+    process.platform === 'win32' ? path.join(prefix, 'mcode.cmd') : path.join(prefix, 'bin/mcode');
+  const result = runFileSync(launcher, ['--version'], { cwd: home, env, encoding: 'utf8', timeout: 30000 });
   assert.equal(result.trim(), version);
   const require = createRequire(path.join(installed, 'package.json'));
   const Database = require('better-sqlite3');
