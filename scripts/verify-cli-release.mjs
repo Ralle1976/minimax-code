@@ -79,5 +79,12 @@ try {
   }
   console.log(`Verified npm installation of ${path.basename(archive)} (${sha256}).`);
 } finally {
-  rmSync(temporary, { recursive: true, force: true });
+  try {
+    // Windows briefly holds locks on just-closed child files (same class as
+    // #232's cleanup bounding); retry, and never fail a passed acceptance
+    // over temp garbage collection.
+    rmSync(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch (error) {
+    console.warn(`cleanup of ${temporary} failed: ${error}`);
+  }
 }
