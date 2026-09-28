@@ -1,6 +1,9 @@
 {
   "comment": "Vitest suites for the standalone distribution, grouped by the gate that runs them. `vitest.oss.config.mjs` includes every group; `scripts/run-vitest-suite.mjs <group>` runs one. Add a test file here rather than in package.json or the Vitest config.",
   "suites": {
+    "bench": [
+      "packages/local-runtime-v2/test/bench/capability-catalog-overhead.test.ts"
+    ],
     "windows": [
       "test/windows-contract.test.mjs"
     ],
