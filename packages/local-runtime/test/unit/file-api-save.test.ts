@@ -1,3 +1,4 @@
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,23 +25,23 @@ async function openWorkspace(): Promise<string> {
   return workspace;
 }
 
-// Windows requires Developer Mode (or admin) to create symlinks. Probed lazily
-// and memoized: the escape-guard cases create real links.
-let symlinkPrivilege: boolean | undefined;
-async function canSymlink(): Promise<boolean> {
-  if (symlinkPrivilege === undefined) {
-    const dir = await mkdtemp(join(tmpdir(), 'mcode-save-symlink-probe-'));
-    try {
-      await symlink(join(dir, 'target'), join(dir, 'link'));
-      symlinkPrivilege = true;
-    } catch {
-      symlinkPrivilege = false;
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+// Windows requires Developer Mode (or admin) to create symlinks. Probed once
+// per run so the guard cases are reported as skipped on such a host instead of
+// passing without ever exercising the guard.
+function canCreateSymlink(): boolean {
+  if (process.platform !== 'win32') return true;
+  const dir = mkdtempSync(join(tmpdir(), 'mcode-save-symlink-probe-'));
+  try {
+    symlinkSync(join(dir, 'target'), join(dir, 'link'), 'dir');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  return symlinkPrivilege;
 }
+
+const symlinkPrivilege = canCreateSymlink();
 
 it('creates a new nested file and returns ok', async () => {
   const workspace = await openWorkspace();
@@ -70,8 +71,7 @@ it('rejects a path that escapes the workspace', async () => {
   await expect(readFile(join(workspace, '..', 'escape.txt'), 'utf-8')).rejects.toThrow();
 });
 
-it('rejects writes through a symlinked directory that leaves the workspace', async () => {
-  if (process.platform === 'win32' && !(await canSymlink())) return;
+it.skipIf(!symlinkPrivilege)('rejects writes through a symlinked directory that leaves the workspace', async () => {
   const workspace = await openWorkspace();
   const outside = await mkdtemp(join(tmpdir(), 'mcode-save-outside-'));
   cleanup.push(() => rm(outside, { recursive: true, force: true }));
@@ -83,8 +83,7 @@ it('rejects writes through a symlinked directory that leaves the workspace', asy
   await expect(readFile(join(outside, 'evil.txt'), 'utf-8')).rejects.toThrow();
 });
 
-it('rejects a dangling symlink target instead of writing through it', async () => {
-  if (process.platform === 'win32' && !(await canSymlink())) return;
+it.skipIf(!symlinkPrivilege)('rejects a dangling symlink target instead of writing through it', async () => {
   const workspace = await openWorkspace();
   await symlink(join(workspace, 'never-created'), join(workspace, 'dangling.txt'));
 
