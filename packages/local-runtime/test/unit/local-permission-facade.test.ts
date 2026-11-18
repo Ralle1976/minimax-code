@@ -92,7 +92,13 @@ function freshFacade(
     },
     ...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
   } as LocalRuntimeConfig;
-  const effectivePlatform = opts.platform ?? process.platform;
+  // The suite's intent is POSIX semantics (verify runs it on darwin/linux
+  // only); Windows-specific cases opt in with platform: 'win32'. On a Windows
+  // host the simulation defaults to 'darwin' so the same tests exercise the
+  // same product code on every host instead of silently switching to the
+  // Windows decision path.
+  const effectivePlatform =
+    opts.platform ?? (process.platform === 'win32' ? 'darwin' : process.platform);
   if (
     opts.seedPosixTrash !== false &&
     (effectivePlatform === 'darwin' || effectivePlatform === 'linux')
@@ -109,7 +115,7 @@ function freshFacade(
     getLocalAgent: async () =>
       opts.workspaceDir ? { defaultWorkspaceDir: opts.workspaceDir } : undefined,
     cloudGateway: opts.cloudGateway,
-    ...(opts.platform ? { platform: opts.platform } : {}),
+    platform: effectivePlatform,
     ...(opts.shellFamily ? { shellFamily: opts.shellFamily } : {}),
     ...(opts.platform === 'win32'
       ? { trashRuntimeProbe: opts.trashRuntimeProbe ?? (() => true) }
