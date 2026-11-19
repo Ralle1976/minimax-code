@@ -1,10 +1,11 @@
 import {
   execFile as execFileCallback,
   spawn,
-  type ChildProcess,
+  type ChildProcessByStdio,
   type ExecFileException,
 } from 'node:child_process';
 import { resolve } from 'node:path';
+import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 
 import {
@@ -87,7 +88,7 @@ export function spawnGitChild(
   args: string[],
   cwd: string,
   onError: (error: unknown) => void,
-): ChildProcess {
+): ChildProcessByStdio<null, Readable, Readable> {
   const child = spawn('git', ['-c', 'core.quotePath=false', '--no-optional-locks', ...args], {
     cwd,
     env: gitEnv(),
