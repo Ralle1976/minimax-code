@@ -776,7 +776,7 @@ test('documentation and archive profiles preserve their required validation gate
   assert.equal(archive.status, 0, archive.stderr);
   assert.deepEqual(archive.stdout.trim().split('\n'), full.filter(g => g !== 'export source preview'));
   const packageProfile = f.run(['--profile', 'package', '--list']);
-  if (['linux', 'darwin'].includes(process.platform)) {
+  if (['linux', 'darwin', 'win32'].includes(process.platform)) {
     assert.equal(packageProfile.status, 0, packageProfile.stderr);
     assert.equal(packageProfile.stdout.trim(), 'test:release-package');
   } else assert.notEqual(packageProfile.status, 0);
