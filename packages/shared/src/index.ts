@@ -48,6 +48,13 @@ export {
   retryWindowsFileSystemOperation,
   type WindowsFileSystemRetryOptions,
 } from './windows-file-system.js';
+export {
+  WINDOWS_MAX_PATH,
+  WINDOWS_MAX_CHILD_PROCESS_WORKING_DIRECTORY_LENGTH,
+  findWindowsWorkingDirectoryOverflow,
+  formatWindowsWorkingDirectoryOverflowMessage,
+  type WindowsWorkingDirectoryOverflow,
+} from './windows-working-directory.js';
 
 export { SESSION_LLM_RETRY_EVENT_TYPE } from './llm-retry-event.js';
 export type {

@@ -1,6 +1,16 @@
-import { execFile as execFileCallback, spawn, type ExecFileException } from 'node:child_process';
+import {
+  execFile as execFileCallback,
+  spawn,
+  type ChildProcess,
+  type ExecFileException,
+} from 'node:child_process';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
+
+import {
+  findWindowsWorkingDirectoryOverflow,
+  formatWindowsWorkingDirectoryOverflowMessage,
+} from '@mavis/shared';
 
 import { WorkspaceGitCommandError } from '../contracts.js';
 
@@ -29,12 +39,21 @@ export async function git(
   options: GitRunOptions = {},
 ): Promise<GitRunResult> {
   if (options.signal?.aborted) throw abortError();
+  const cwd = resolve(workspace);
+  // Windows refuses to start a child process in a working directory that does
+  // not fit MAX_PATH. The spawn then fails asynchronously on the stdio socket,
+  // which no `try`/`catch` around the promise can intercept, so the check has
+  // to happen before the child is created.
+  const overflow = findWindowsWorkingDirectoryOverflow(cwd);
+  if (overflow) {
+    return { code: 1, stdout: '', stderr: formatWindowsWorkingDirectoryOverflowMessage(overflow) };
+  }
   try {
     const result = await execFile(
       'git',
       ['-c', 'core.quotePath=false', '--no-optional-locks', ...args],
       {
-        cwd: resolve(workspace),
+        cwd,
         encoding: 'utf-8',
         env: gitEnv(),
         maxBuffer: GIT_MAX_BUFFER,
@@ -56,6 +75,32 @@ export async function git(
 }
 
 /**
+ * Starts Git with stdio pipes that cannot terminate the host process.
+ *
+ * A child that fails to start leaves its stdio pipes unconnected, and the
+ * sockets then report `read ENOTCONN` on their own. Without an 'error'
+ * listener on every pipe that report is an unhandled 'error' event and it
+ * kills the process, so the pipes are guarded here and every failure is
+ * reported through `onError`.
+ */
+export function spawnGitChild(
+  args: string[],
+  cwd: string,
+  onError: (error: unknown) => void,
+): ChildProcess {
+  const child = spawn('git', ['-c', 'core.quotePath=false', '--no-optional-locks', ...args], {
+    cwd,
+    env: gitEnv(),
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  child.on('error', onError);
+  child.stdout.on('error', onError);
+  child.stderr.on('error', onError);
+  return child;
+}
+
+/**
  * Runs Git without buffering stdout. Review search and untracked enumeration
  * use this path so repository-sized output never crosses execFile.maxBuffer.
  */
@@ -65,13 +110,10 @@ export async function gitStream(
   options: GitStreamOptions,
 ): Promise<Omit<GitRunResult, 'stdout'>> {
   if (options.signal?.aborted) throw abortError();
+  const cwd = resolve(workspace);
+  const overflow = findWindowsWorkingDirectoryOverflow(cwd);
+  if (overflow) throw new Error(formatWindowsWorkingDirectoryOverflowMessage(overflow));
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('git', ['-c', 'core.quotePath=false', '--no-optional-locks', ...args], {
-      cwd: resolve(workspace),
-      env: gitEnv(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
     const stdoutDecoder = new TextDecoder();
     const stderrDecoder = new TextDecoder();
     const stderrLimit = options.maxStderrBytes ?? 64 * 1024;
@@ -89,6 +131,8 @@ export async function gitStream(
       child.kill();
       finishError(abortError());
     };
+
+    const child = spawnGitChild(args, cwd, finishError);
     options.signal?.addEventListener('abort', onAbort, { once: true });
 
     child.stdout.on('data', (chunk: Buffer) => {
@@ -101,7 +145,6 @@ export async function gitStream(
       stderr += stderrDecoder.decode(chunk, { stream: true });
       if (stderr.length > stderrLimit) stderr = stderr.slice(0, stderrLimit);
     });
-    child.on('error', finishError);
     child.on('close', (code) => {
       if (settled) return;
       settled = true;

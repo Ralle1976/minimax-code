@@ -2,9 +2,11 @@
   "comment": "Vitest suites for the standalone distribution, grouped by the gate that runs them. `vitest.oss.config.mjs` includes every group; `scripts/run-vitest-suite.mjs <group>` runs one. Add a test file here rather than in package.json or the Vitest config.",
   "suites": {
     "windows": [
-      "test/windows-contract.test.mjs"
+      "test/windows-contract.test.mjs",
+      "test/windows-workspace-path.test.mjs"
     ],
     "capability": [
+      "packages/shared/test/unit/windows-working-directory.test.ts",
       "packages/local-runtime-v2/test/integration/compaction-openai-transport.integration.test.ts",
       "packages/local-runtime/test/unit/seed-builtin-shared-dir.test.ts",
       "packages/local-runtime/test/unit/skill-directory-symlinks.test.ts",

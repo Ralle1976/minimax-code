@@ -53,6 +53,7 @@ import {
   resolveTuiManagedBackendLane,
   resolveTuiStartupEnvironmentOption,
 } from '../cli/environment.js';
+import { workspacePathLimitMessage } from '../cli/workspace-path.js';
 import { resolveMcodeStartupUpdateNotice } from '../update/startup-notice.js';
 import type { McodeUpdateApplication } from '../update/application.js';
 import { tuiErrorDiagnostic } from '../user-facing-failure.js';
@@ -185,6 +186,11 @@ export async function launchTui(
 
   const homeDirectory = options.homeDir ?? homedir();
   const workspaceDir = options.workspaceDir ?? process.cwd();
+  // Git and shell tools start in the workspace directory. On Windows a
+  // directory beyond MAX_PATH makes those spawns fail asynchronously and kill
+  // the process, so the run stops here with an explanation instead.
+  const workspacePathLimit = workspacePathLimitMessage(workspaceDir);
+  if (workspacePathLimit) throw new Error(workspacePathLimit);
   const dataDir = options.dataDir ?? (await (dependencies.prepareDataDir ?? prepareTuiDataDir)());
   const baseTerminal = options.terminal ?? new ProcessTerminal();
   const tuiMode = options.tuiMode ?? (dependencies.readTuiMode ?? readTuiModeSetting)(dataDir);

@@ -3,6 +3,11 @@ import { realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
+import {
+  findWindowsWorkingDirectoryOverflow,
+  formatWindowsWorkingDirectoryOverflowMessage,
+} from '@mavis/shared';
+
 import { resolvePath } from './path-utils.js';
 
 const execFile = promisify(execFileCallback);
@@ -15,9 +20,18 @@ export interface GitRunResult {
 }
 
 export async function git(args: string[], workspace: string): Promise<GitRunResult> {
+  const cwd = resolvePath(workspace);
+  // Windows refuses to start a child process in a working directory that does
+  // not fit MAX_PATH. The spawn then fails asynchronously on the stdio socket,
+  // which no `try`/`catch` around the promise can intercept, so the check has
+  // to happen before the child is created.
+  const overflow = findWindowsWorkingDirectoryOverflow(cwd);
+  if (overflow) {
+    return { code: 1, stdout: '', stderr: formatWindowsWorkingDirectoryOverflowMessage(overflow) };
+  }
   try {
     const result = await execFile('git', ['-c', 'core.quotePath=false', ...args], {
-      cwd: resolvePath(workspace),
+      cwd,
       encoding: 'utf-8',
       env: gitEnv(),
       maxBuffer: GIT_MAX_BUFFER,

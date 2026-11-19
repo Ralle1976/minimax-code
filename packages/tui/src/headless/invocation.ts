@@ -17,6 +17,7 @@ import {
   type RawSystemPromptOptions,
   type SystemPromptOverrides,
 } from '../cli/system-prompt-options.js';
+import { workspacePathLimitMessage } from '../cli/workspace-path.js';
 import type { TuiExecFormat } from './output.js';
 import type { McodeContextMode } from '@mavis/protocol/local';
 
@@ -145,6 +146,7 @@ export async function resolveTuiExecInvocation(
   const effort = readEffortOption(options);
   const systemPromptOverrides = readSystemPromptOverrides(options);
   const workspaceDir = await resolveDirectory(options.cwd ?? process.cwd(), '--cwd');
+  assertWorkspacePathSupportsChildProcesses(workspaceDir);
   throwIfAborted(signal);
   const rawInput = options.input === '-' ? await readStdin() : (promptArgument ?? '');
   throwIfAborted(signal);
@@ -239,6 +241,7 @@ async function resolveTuiExecReviewInvocation(
   const effort = readEffortOption(options);
   const systemPromptOverrides = readSystemPromptOverrides(options);
   const workspaceDir = await resolveDirectory(options.cwd ?? process.cwd(), '--cwd');
+  assertWorkspacePathSupportsChildProcesses(workspaceDir);
   throwIfAborted(signal);
   const timeoutMs =
     options.timeout === undefined ? undefined : parseDuration(options.timeout, '--timeout');
@@ -372,6 +375,19 @@ async function resolveDirectory(reference: string, option: string): Promise<stri
   const info = await stat(directory);
   if (!info.isDirectory()) throw invocationError(`${option} must reference a directory.`);
   return directory;
+}
+
+/**
+ * Rejects a workspace that Windows cannot hand to a child process.
+ *
+ * The runtime spawns Git and shell tools in the workspace directory; on
+ * Windows a directory beyond `MAX_PATH` makes those spawns fail asynchronously
+ * and kill the process. Reporting it as an invocation error keeps the failure
+ * on the documented `mcode exec` exit code for invalid invocations.
+ */
+function assertWorkspacePathSupportsChildProcesses(workspaceDir: string): void {
+  const message = workspacePathLimitMessage(workspaceDir);
+  if (message) throw invocationError(message);
 }
 
 async function resolveFile(

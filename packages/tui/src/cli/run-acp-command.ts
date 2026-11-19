@@ -4,6 +4,7 @@ import type { Readable, Writable } from 'node:stream';
 import { serveTuiAcpStdio } from '../acp/stdio.js';
 import { prepareTuiDataDir } from '../runtime/data-dir.js';
 import type { SystemPromptOverrides } from './system-prompt-options.js';
+import { workspacePathLimitMessage } from './workspace-path.js';
 import type {
   CreatedTuiRuntime,
   createTuiRuntime,
@@ -59,9 +60,15 @@ export async function runTuiAcpCommand(
     const createRuntime = dependencies.createRuntime ?? lifecycle.createTuiRuntime;
     shutdownRuntime ??= lifecycle.shutdownTuiRuntime;
     const dataDir = await (dependencies.prepareDataDir ?? prepareTuiDataDir)();
+    const workspaceDir = (dependencies.workspaceDir ?? (() => process.cwd()))();
+    // Git and shell tools start in the workspace directory. On Windows a
+    // directory beyond MAX_PATH makes those spawns fail asynchronously and kill
+    // the process, so the server stops here with an explanation instead.
+    const workspacePathLimit = workspacePathLimitMessage(workspaceDir);
+    if (workspacePathLimit) throw new Error(workspacePathLimit);
     runtime = await createRuntime({
       dataDir,
-      workspaceDir: (dependencies.workspaceDir ?? (() => process.cwd()))(),
+      workspaceDir,
       version,
       surface: 'acp',
       ...(lane ? { lane } : {}),
