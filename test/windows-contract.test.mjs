@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { checkWindowsSourceLocation } from "../scripts/check-windows-source-location.mjs";
+import { resolveNpmCli, runWindowsShim } from "../scripts/lib/windows-command.mjs";
 import { resolveWslPath } from "../packages/tui/src/host/wsl-path.js";
 import { McodeUpdateService } from "../packages/tui/src/update/service.js";
 
@@ -30,6 +31,36 @@ describe.skipIf(process.platform !== "win32")("Windows source contract", () => {
 
   it("preserves Windows path syntax on the native host", async () => {
     assert.equal(await resolveWslPath(windowsPath), windowsPath);
+  });
+
+  // The release acceptance starts the generated npm launcher, which is a .cmd
+  // shim and therefore needs cmd.exe. cmd.exe has no escape for a double
+  // quote and expands %VAR%, so a launcher path that contains one of them
+  // must be refused instead of quoted: a path that could close the quoted
+  // argument must never reach a command line.
+  it("refuses a launcher path that could escape the quoted cmd.exe argument", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "mcode-cmd-guard-"));
+    temporaryRoots.push(root);
+    const marker = path.join(root, "injected.txt");
+    const injected = `C:\\tmp\\payload" & echo injected > ${marker} & "C:\\tmp\\`;
+    assert.throws(() => runWindowsShim(injected, ["--version"]), /refusing/i);
+    assert.equal(existsSync(marker), false, "the refused command line must not have run");
+    assert.throws(() => runWindowsShim(`C:\\tmp\\%TEMP%\\mcode.cmd`, ["--version"]), /refusing/i);
+    assert.throws(() => runWindowsShim("C:\\tmp\\mcode.cmd", ["--ver\"sion"]), /refusing/i);
+  });
+
+  it("runs a launcher whose path contains spaces", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "mcode launcher "));
+    temporaryRoots.push(root);
+    const shim = path.join(root, "mcode.cmd");
+    writeFileSync(shim, "@echo off\r\necho 0.7.2\r\n");
+    assert.equal(runWindowsShim(shim, ["--version"], { encoding: "utf8" }).trim(), "0.7.2");
+  });
+
+  it("resolves the npm entry point without a command shell", () => {
+    const npmCli = resolveNpmCli();
+    assert.equal(existsSync(npmCli), true);
+    assert.equal(path.basename(npmCli), "npm-cli.js");
   });
 
   it.each(["standard npm", "custom npm wrapper", "custom npm wrapper with adjacent CLI"])("installs and validates a managed update in a complex path with %s", async (npmLayout) => {

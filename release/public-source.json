@@ -3644,6 +3644,7 @@
     "scripts/lib/tui-npm-bundle-profile.mjs",
     "scripts/lib/tui-package-privacy.mjs",
     "scripts/lib/vitest-suites.mjs",
+    "scripts/lib/windows-command.mjs",
     "scripts/package-cli-release.mjs",
     "scripts/perf/config.json",
     "scripts/perf/driver.ts",

@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { versionFromTag } from './lib/cli-release.mjs';
+import { runNpm, runShim } from './lib/windows-command.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const version = versionFromTag(process.env.MCODE_RELEASE_TAG);
@@ -16,38 +17,6 @@ const archive = path.resolve(process.env.MCODE_RELEASE_ARCHIVE);
 const sha256 = createHash('sha256').update(readFileSync(archive)).digest('hex');
 assert.equal(readFileSync(`${archive}.sha256`, 'utf8'), `${sha256}  ${path.basename(archive)}\n`, 'Release archive checksum mismatch');
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-
-// npm and the generated mcode launcher are .cmd shims on Windows, which
-// CreateProcess cannot execute without a shell (same class as #130/#351).
-// The shims resolve their own installation from their script directory, so
-// they are invoked by absolute path: a quoted bare name makes cmd.exe lose
-// that directory and npm then looks for its entry point next to the caller.
-function resolveWindowsShim(name) {
-  const extensions = (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
-  for (const directory of (process.env.PATH ?? '').split(';').filter(Boolean)) {
-    for (const extension of extensions) {
-      const candidate = path.join(directory, `${name}${extension.toLowerCase()}`);
-      if (existsSync(candidate)) return candidate;
-    }
-  }
-  throw new Error(`${name}.cmd was not found on PATH.`);
-}
-
-// cmd.exe strips the first and the last quote of the command it receives,
-// so the command line carries one pair of quotes more than its arguments.
-function quoteWindowsArgument(value) {
-  const escaped = String(value).replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, '$1$1');
-  return `"${escaped}"`;
-}
-
-function runFileSync(command, args, options) {
-  if (process.platform !== 'win32') return execFileSync(command, args, options);
-  const line = [command, ...args].map(quoteWindowsArgument).join(' ');
-  return execFileSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"${line}"`], {
-    ...options,
-    windowsVerbatimArguments: true,
-  });
-}
 
 const temporary = mkdtempSync(path.join(tmpdir(), 'mcode-package-install-'));
 try {
@@ -70,8 +39,9 @@ try {
   });
   delete env.NODE_PATH;
   delete env.NODE_OPTIONS;
-  const npm = process.platform === 'win32' ? resolveWindowsShim('npm') : 'npm';
-  runFileSync(npm, ['install', '--global', '--prefix', prefix,
+  // npm runs without a command shell on Windows, so no path in the argument
+  // vector can become command syntax.
+  runNpm(['install', '--global', '--prefix', prefix,
     '--registry=https://registry.npmjs.org/', '--include=optional', '--ignore-scripts=false',
     '--allow-scripts=better-sqlite3', '--no-audit', '--no-fund', archive],
   { cwd: home, env, stdio: 'inherit', timeout: 300000 });
@@ -89,7 +59,7 @@ try {
   const launcher = process.platform === 'win32'
     ? path.join(prefix, 'mcode.cmd')
     : path.join(prefix, 'bin/mcode');
-  const result = runFileSync(launcher, ['--version'], { cwd: home, env, encoding: 'utf8', timeout: 30000 });
+  const result = runShim(launcher, ['--version'], { cwd: home, env, encoding: 'utf8', timeout: 30000 });
   assert.equal(result.trim(), version);
   const require = createRequire(path.join(installed, 'package.json'));
   const Database = require('better-sqlite3');
@@ -111,10 +81,18 @@ try {
     // Windows briefly holds locks on just-closed child files (same class as
     // #232's cleanup bounding); retry, and never fail a passed acceptance
     // over temporary directory cleanup.
+    const remove = () => rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
     try {
-      rmSync(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      remove();
     } catch (error) {
       console.warn(`Cleanup of ${temporary} failed: ${error}`);
+      // The lock belongs to a child process that is still shutting down, so
+      // one more attempt after the process tree settled removes the rest.
+      try {
+        remove();
+      } catch (retryError) {
+        console.warn(`Cleanup of ${temporary} still failed: ${retryError}`);
+      }
     }
   } else {
     rmSync(temporary, { recursive: true, force: true });
