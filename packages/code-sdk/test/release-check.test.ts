@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, type PathLike } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -211,9 +211,11 @@ describe('directory publish guard', () => {
     expect(direct.status).toBe(1);
     expect(direct.stderr).toContain(DIRECTORY_PUBLISH_MESSAGE);
 
+    const npmCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
     const publish = spawnSync(
-      'npm',
+      process.execPath,
       [
+        npmCli,
         'publish',
         '--dry-run',
         '--registry=https://registry.npmjs.org/',

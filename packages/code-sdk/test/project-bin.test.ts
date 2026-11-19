@@ -112,8 +112,14 @@ describe('project-local node_modules/.bin/mcode', () => {
     }
     const onPath = tempDir();
     const pathBin = join(onPath, process.platform === 'win32' ? 'mcode.cmd' : 'mcode');
-    writeFileSync(pathBin, process.platform === 'win32' ? '@echo off\r\n' : '#!/bin/sh\n');
-    chmodSync(pathBin, 0o755);
+    if (process.platform === 'win32') {
+      // The SDK never starts a batch file through a shell: the launcher must name its JS entry.
+      writeFileSync(pathBin, '"%~dp0\\mcode.mjs" %*\r\n');
+      copyFileSync(FAKE_MCODE, join(onPath, 'mcode.mjs'));
+    } else {
+      writeFileSync(pathBin, '#!/bin/sh\n');
+      chmodSync(pathBin, 0o755);
+    }
     const shared = {
       env: { PATH: onPath, PATHEXT: '.CMD' },
       packageSearchFrom: [] as string[],
