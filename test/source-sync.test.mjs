@@ -1046,21 +1046,36 @@ test('suite runner pins its locale, preserves gate arguments and canonicalizes W
   writeFileSync(path.join(root, 'node_modules/vitest/cli.cjs'), 'console.log(JSON.stringify({args:process.argv.slice(2),temp:process.env.TEMP,tmp:process.env.TMP,cwd:process.cwd(),lang:process.env.LANG,language:process.env.LANGUAGE,lcAll:process.env.LC_ALL,lcMessages:process.env.LC_MESSAGES,locale:Intl.DateTimeFormat().resolvedOptions().locale})); process.exit(17);');
   const alias = path.join(root, 'temporary-alias');
   symlinkSync(path.join(root, 'temporary'), alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const inherited = {
+    ...process.env,
+    LANG: 'zh_CN.UTF-8',
+    LANGUAGE: 'zh_CN:zh',
+    LC_ALL: 'zh_CN.UTF-8',
+    LC_MESSAGES: 'zh_CN.UTF-8',
+    TEMP: alias,
+    TMP: alias,
+    TMPDIR: alias,
+  };
+  // The runner pins the POSIX locale variables it inherits before it starts
+  // Vitest. ICU derives the default locale from them on Linux and macOS and
+  // ignores them on Windows, where the operating system region decides. Resolve
+  // the expectation from the pinned environment instead of forcing a locale
+  // the host never reports.
+  const pinned = { ...inherited, LANG: 'C', LANGUAGE: 'C', LC_ALL: 'C', LC_MESSAGES: 'C' };
+  const probe = spawnSync(process.execPath, ['-e', 'process.stdout.write(Intl.DateTimeFormat().resolvedOptions().locale)'], {
+    encoding: 'utf8',
+    env: pinned,
+  });
+  assert.equal(probe.status, 0, probe.stderr);
+  // The runner starts Vitest on the real host under every simulated platform,
+  // so all three runs resolve the same locale.
+  const expectedLocale = probe.stdout.trim();
   for (const platform of ['linux', 'darwin', 'win32']) {
     const preload = path.join(root, 'platform.cjs');
     writeFileSync(preload, `Object.defineProperty(process, 'platform', { value: ${JSON.stringify(platform)} });`);
     const result = spawnSync(process.execPath, ['--require', preload, path.join(root, 'scripts/run-vitest-suite.mjs'), 'fixture'], {
       encoding: 'utf8',
-      env: {
-        ...process.env,
-        LANG: 'zh_CN.UTF-8',
-        LANGUAGE: 'zh_CN:zh',
-        LC_ALL: 'zh_CN.UTF-8',
-        LC_MESSAGES: 'zh_CN.UTF-8',
-        TEMP: alias,
-        TMP: alias,
-        TMPDIR: alias,
-      },
+      env: inherited,
     });
     assert.equal(result.status, 17, result.stderr);
     const child = JSON.parse(result.stdout);
@@ -1078,7 +1093,7 @@ test('suite runner pins its locale, preserves gate arguments and canonicalizes W
         lcMessages: child.lcMessages,
         locale: child.locale,
       },
-      { lang: 'C', language: 'C', lcAll: 'C', lcMessages: 'C', locale: 'en-US' },
+      { lang: 'C', language: 'C', lcAll: 'C', lcMessages: 'C', locale: expectedLocale },
     );
   }
 });

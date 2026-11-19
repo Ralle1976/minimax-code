@@ -19,7 +19,9 @@ const environment = { ...process.env };
 // Product copy follows the host locale, but tests assert a deliberate default
 // language and cover localized rendering through explicit locale inputs. Pin
 // every locale source before Vitest starts so both workers and subprocesses are
-// deterministic on developer machines and in CI.
+// deterministic on developer machines and in CI. These are POSIX locale
+// sources: Windows ignores them and ICU keeps the operating system region, so
+// the pins only reach the processes that read LANG and LC_*.
 environment.LANG = "C";
 environment.LANGUAGE = "C";
 environment.LC_ALL = "C";
