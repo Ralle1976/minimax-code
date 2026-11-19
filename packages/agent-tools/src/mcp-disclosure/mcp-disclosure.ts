@@ -1,7 +1,7 @@
 export * from './types.js';
 export { tokenize } from './tokenize.js';
 export { buildIndex, buildOrReuseIndex, computeIndexSignature } from './search-index.js';
-export { planMcpDisclosure, modelInWhitelist } from './plan.js';
+export { planMcpDisclosure, modelInWhitelist, MAX_INLINE_CONFIGURED_TOOLS } from './plan.js';
 export { createToolSearchTool } from './tool-search.js';
 export {
   authorizeMcpInvokeReference,

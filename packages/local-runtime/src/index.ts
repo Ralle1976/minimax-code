@@ -55,6 +55,13 @@ export {
 } from "./questionnaire/fork.js";
 export { readPreviewTrainPinnedItemsOrderPreference } from "./pin/legacy-preferences.js";
 export type { LocalSkillService } from "./skills/skill-service.js";
+export {
+  renderLocalSkillsCatalogResult,
+  resolveLocalSkillCatalogBudgetTokens,
+  type LocalSkillsCatalogEntry,
+  type LocalSkillsCatalogRenderOptions,
+  type LocalSkillsCatalogRenderResult,
+} from "./skills/catalog.js";
 
 export { resolveLocalRuntimeMode } from "./runtime/mode.js";
 

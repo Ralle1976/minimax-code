@@ -1,5 +1,5 @@
 {
-  "comment": "Vitest suites for the standalone distribution, grouped by the gate that runs them. `vitest.oss.config.mjs` includes every group; `scripts/run-vitest-suite.mjs <group>` runs one. Add a test file here rather than in package.json or the Vitest config.",
+  "comment": "Vitest suites for the standalone distribution, grouped by the gate that runs them. `vitest.oss.config.mjs` includes every group; `scripts/run-vitest-suite.mjs <group>` runs one. Add a test file here rather than in package.json or the Vitest config. The `bench` group is opt-in: no verification gate runs it, so a measurement harness never extends the CI runtime.",
   "suites": {
     "windows": [
       "test/windows-contract.test.mjs"
@@ -299,6 +299,9 @@
       "packages/code-sdk/test/release-check.test.ts",
       "packages/code-sdk/test/run.test.ts",
       "packages/code-sdk/test/stream.test.ts"
+    ],
+    "bench": [
+      "packages/local-runtime-v2/test/bench/capability-catalog-overhead.test.ts"
     ]
   }
 }
