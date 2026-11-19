@@ -563,6 +563,7 @@
     "packages/code-sdk/src/version.ts",
     "packages/code-sdk/test/args.test.ts",
     "packages/code-sdk/test/cli-contract.test.ts",
+    "packages/code-sdk/test/cli-resolution-windows.test.ts",
     "packages/code-sdk/test/cli-resolution.test.ts",
     "packages/code-sdk/test/exit-codes.test.ts",
     "packages/code-sdk/test/fixtures/cancelled.jsonl",
