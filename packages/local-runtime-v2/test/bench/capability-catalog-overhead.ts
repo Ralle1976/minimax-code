@@ -1,21 +1,23 @@
 import {
-  buildIndex,
   createMcpInvokeTool,
   createToolSearchTool,
   modelInWhitelist,
   planMcpDisclosure,
   renderMcpToolSearchHintBlock,
-  MAX_INLINE_CONFIGURED_TOOLS,
   type McpDisclosureOptions,
   type McpModelIdentity,
   type McpToolEntry,
 } from '@mavis/agent-tools';
+// The benchmark must not change production code, so the two planner internals it
+// reports on are imported from their modules instead of the package barrel.
+import { MAX_INLINE_CONFIGURED_TOOLS } from '../../../agent-tools/src/mcp-disclosure/plan.js';
+import { buildIndex } from '../../../agent-tools/src/mcp-disclosure/search-index.js';
 import { createDefaultTokenEstimator, type TokenEstimator } from '@mavis/context-manager';
 import {
   renderLocalSkillsCatalogResult,
   resolveLocalSkillCatalogBudgetTokens,
   type LocalSkillsCatalogEntry,
-} from '@mavis/local-runtime';
+} from '../../../local-runtime/src/skills/catalog.js';
 import { resolveLocalMcpDisclosureOptions } from '../../src/service/turn-system/agent-host/assembly/local-turn-tool-catalog.js';
 
 // Measurement source of truth is the production token estimator used by the

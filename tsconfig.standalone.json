@@ -413,6 +413,7 @@
   "include": [
     "packages/tui/src/index.ts",
     "packages/local-runtime/src/types/*.d.ts",
-    "third_party/pi-mono/packages/coding-agent/src/utils/*.d.ts"
+    "third_party/pi-mono/packages/coding-agent/src/utils/*.d.ts",
+    "packages/local-runtime-v2/test/bench/**/*.ts"
   ]
 }

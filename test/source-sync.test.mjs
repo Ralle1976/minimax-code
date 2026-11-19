@@ -1034,6 +1034,32 @@ test('source inventory rejects unregistered, missing and duplicate first-party t
   assert.deepEqual(suiteInventoryViolations(files, { capability: [existing, omitted] }), []);
 });
 
+test('the capability benchmark stays out of every CI gate', () => {
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+  const suites = JSON.parse(read('test/vitest-suites.json')).suites;
+  const scripts = JSON.parse(read('package.json')).scripts;
+  const benchmark = 'packages/local-runtime-v2/test/bench/capability-catalog-overhead.test.ts';
+
+  // The benchmark is registered in its own group, so `pnpm test:bench` runs it.
+  const groups = Object.entries(suites).filter(([, files]) => files.includes(benchmark));
+  assert.deepEqual(groups.map(([name]) => name), ['bench']);
+
+  // Every CI gate runs one declared group. A measurement harness must not be one
+  // of them, otherwise the benchmark extends the CI runtime of every platform.
+  const gateScripts = [...read('scripts/verify.mjs').matchAll(/script:\s*["']([^"']+)["']/g)].map((match) => match[1]);
+  assert.ok(gateScripts.length > 0, 'no verification gate was found in scripts/verify.mjs');
+  const gateSuites = gateScripts
+    .map((gate) => /run-vitest-suite\.mjs\s+([\w-]+)/.exec(scripts[gate] ?? '')?.[1])
+    .filter(Boolean);
+  assert.ok(gateSuites.length > 0, 'no verification gate runs a declared Vitest group');
+  for (const suite of gateSuites) {
+    assert.ok(
+      !(suites[suite] ?? []).includes(benchmark),
+      `CI gate group ${suite} must not run the capability benchmark`,
+    );
+  }
+});
+
 test('suite runner pins its locale, preserves gate arguments and canonicalizes Windows temporary paths', t => {
   const root = mkdtempSync(path.join(tmpdir(), 'suite-runner-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

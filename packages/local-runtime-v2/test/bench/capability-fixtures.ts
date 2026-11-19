@@ -1,7 +1,7 @@
 import { Type, type TSchema } from '@sinclair/typebox';
 import { defineRuntimeTool, type RuntimeTool } from '@mavis/agent-core/tools';
 import type { McpToolEntry } from '@mavis/agent-tools';
-import type { LocalSkillsCatalogEntry } from '@mavis/local-runtime';
+import type { LocalSkillsCatalogEntry } from '../../../local-runtime/src/skills/catalog.js';
 
 export type SkillFixtureProfile = 'short' | 'realistic' | 'cap';
 export type SchemaFixtureProfile = 'compact' | 'realistic' | 'large';

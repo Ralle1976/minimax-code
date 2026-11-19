@@ -4,11 +4,9 @@ export {
 } from "./shared/model-tool-capabilities.js";
 
 export {
-  buildIndex,
   buildOrReuseIndex,
   planMcpDisclosure,
   modelInWhitelist,
-  MAX_INLINE_CONFIGURED_TOOLS,
   createToolSearchTool,
   authorizeMcpInvokeReference,
   createMcpInvokeTool,
