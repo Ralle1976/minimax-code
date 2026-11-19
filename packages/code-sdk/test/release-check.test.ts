@@ -26,6 +26,30 @@ import { tempDir } from './helpers.js';
 const releaseCheck = fileURLToPath(new URL('../scripts/release-check.mjs', import.meta.url));
 const NPMJS = 'https://registry.npmjs.org/';
 
+/**
+ * The npm CLI that ships with Node.js. Node refuses to spawn `npm.cmd` without a shell on
+ * Windows, so npm runs through its JS entry, like the Windows contract test does it.
+ */
+const npmCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+
+/**
+ * A child environment without ambient npm configuration. npm reads `npm_config_*` and
+ * `npm_execpath` case-insensitively on Windows, and the test runner hands them to its
+ * worker in upper case, so an inherited `NPM_CONFIG_USERCONFIG` would shadow the isolated
+ * user config a test sets. `npm_execpath` also decides which tool the Windows branch of
+ * `resolveTool` starts, so the child names it explicitly.
+ */
+function isolatedEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    const lower = key.toLowerCase();
+    if (lower.startsWith('npm_config_') || lower === 'npm_execpath') continue;
+    env[key] = value;
+  }
+  return { ...env, ...extra };
+}
+
 describe('release:check registry safety', () => {
   it('pins both the default and the @minimax-ai scoped registry on every printed npm command', () => {
     expect(NPMJS_TARGET_ARGS).toEqual([`--registry=${NPMJS}`, `--@minimax-ai:registry=${NPMJS}`]);
@@ -66,7 +90,7 @@ describe('release:check registry safety', () => {
 
     const result = spawnSync(process.execPath, [releaseCheck, '--allow-non-main', '--offline'], {
       encoding: 'utf8',
-      env: { ...process.env, npm_config_userconfig: npmrc },
+      env: isolatedEnv({ npm_config_userconfig: npmrc, npm_execpath: npmCli }),
       timeout: 60_000,
     });
 
@@ -211,7 +235,6 @@ describe('directory publish guard', () => {
     expect(direct.status).toBe(1);
     expect(direct.stderr).toContain(DIRECTORY_PUBLISH_MESSAGE);
 
-    const npmCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
     const publish = spawnSync(
       process.execPath,
       [
@@ -221,10 +244,16 @@ describe('directory publish guard', () => {
         '--registry=https://registry.npmjs.org/',
         '--@minimax-ai:registry=https://registry.npmjs.org/',
       ],
-      { cwd: packageDir, encoding: 'utf8', timeout: 60_000 },
+      {
+        cwd: packageDir,
+        encoding: 'utf8',
+        env: isolatedEnv({ npm_execpath: npmCli }),
+        timeout: 60_000,
+      },
     );
     expect(publish.status).not.toBe(0);
     expect(`${publish.stdout}${publish.stderr}`).toContain('Refusing to publish');
     expect(`${publish.stdout}${publish.stderr}`).not.toMatch(/npm notice.*published/u);
-  });
+    // npm starts, packs the package and runs the guard; that exceeds Vitest's 5 s default.
+  }, 60_000);
 });
