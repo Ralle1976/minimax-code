@@ -5,6 +5,7 @@ import json
 import os
 import pickle
 import signal
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,12 @@ from minimax_code import (
 def calls(env: dict[str, str]) -> list[dict[str, Any]]:
     text = Path(env["FAKE_MCODE_RECORD"]).read_text(encoding="utf-8")
     return [json.loads(line) for line in text.splitlines()]
+
+
+#: Windows has no signals between processes: the SDK stops the CLI with ``TerminateProcess``, so
+#: the CLI cannot run a cancel handler, never reports the cancel itself and exits with a code
+#: instead of a signal number.
+WINDOWS = sys.platform == "win32"
 
 
 async def test_run_returns_turn_and_builds_args(fake_env: dict[str, str], tmp_path: Path) -> None:
@@ -140,23 +147,45 @@ async def test_old_cli_is_rejected(fake_env: dict[str, str]) -> None:
         await MCode(MCodeOptions(env=fake_env)).start_thread().run("x")
 
 
-async def test_cancel_via_stream_and_task(fake_env: dict[str, str]) -> None:
+async def test_cancel_via_stream(fake_env: dict[str, str]) -> None:
     fake_env["FAKE_MCODE_SCENARIO"] = "slow"
     thread = MCode(MCodeOptions(env=fake_env)).start_thread()
     streamed = await thread.run_streamed("x")
     seen = []
-    async for event in streamed:
-        seen.append(event["type"])
-        if event["type"] == "future.event":
-            streamed.cancel()
-    assert seen[-2:] == ["turn.failed", "exec.completed"]
+    if WINDOWS:
+        # The CLI is stopped with TerminateProcess, so it never runs its cancel handler, sends no
+        # final events and leaves the SDK with the exit code of the killed process.
+        with pytest.raises(MCodeRunError) as info:
+            async for event in streamed:
+                seen.append(event["type"])
+                if event["type"] == "future.event":
+                    streamed.cancel()
+        assert info.value.exit_code == 1
+    else:
+        async for event in streamed:
+            seen.append(event["type"])
+            if event["type"] == "future.event":
+                streamed.cancel()
+        assert seen[-2:] == ["turn.failed", "exec.completed"]
 
+
+async def test_cancel_via_task(fake_env: dict[str, str]) -> None:
+    fake_env["FAKE_MCODE_SCENARIO"] = "slow"
+    thread = MCode(MCodeOptions(env=fake_env)).start_thread()
     task = asyncio.create_task(thread.run("y"))
     await asyncio.sleep(0.5)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    # The Thread is free again after cancellation; a CLI-reported cancel raises MCodeAbortError.
+    # The Thread is free again after cancellation.
+    fake_env["FAKE_MCODE_SCENARIO"] = "ok"
+    assert (await thread.run("again")).final_response == "Hello: again"
+
+
+@pytest.mark.skipif(WINDOWS, reason="Windows terminates a process instead of signalling it")
+async def test_cli_reported_cancel_raises_abort_error(fake_env: dict[str, str]) -> None:
+    fake_env["FAKE_MCODE_SCENARIO"] = "slow"
+    thread = MCode(MCodeOptions(env=fake_env)).start_thread()
     run = asyncio.create_task(thread.run("z"))
     await asyncio.sleep(0.5)
     with pytest.raises(MCodeAbortError):
@@ -211,7 +240,12 @@ async def test_timeout_backstop_raises_timeout_error(
     with pytest.raises(MCodeRunError, match="exceeded timeout_ms") as info:
         await thread.run("x", RunOptions(timeout_ms=100))
     assert info.value.status == "timeout"
-    assert info.value.exit_code is not None and info.value.exit_code < 0
+    assert info.value.exit_code is not None
+    if WINDOWS:
+        # A killed process reports an exit code on Windows, not a signal number.
+        assert info.value.exit_code == 1
+    else:
+        assert info.value.exit_code < 0
 
 
 @pytest.mark.parametrize(
@@ -284,6 +318,7 @@ def test_sync_client(fake_env: dict[str, str]) -> None:
         assert thread.id == "sess-new"
 
 
+@pytest.mark.skipif(WINDOWS, reason="Windows terminates a process instead of signalling it")
 async def test_cancel_uses_sigterm_after_terminal_sigint(
     fake_env: dict[str, str], tmp_path: Path
 ) -> None:

@@ -25,7 +25,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         python: ["3.10", "3.13", "3.14"]
         include:
-          # Launcher resolution and option tests; fake-CLI process tests are POSIX-only.
+          # Launcher resolution, option and fake-CLI process tests.
           - os: windows-latest
             python: "3.13"
     runs-on: ${{ matrix.os }}
@@ -37,6 +37,11 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: runner.os == 'Windows'
+        with:
+          node-version: "24"
+          package-manager-cache: false
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
