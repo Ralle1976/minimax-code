@@ -20,6 +20,48 @@ function assertSuccessfulChild(result) {
     `CLI spawn failed: ${result.error?.message}; signal=${result.signal}; stderr=${result.stderr}`);
   assert.equal(result.status, 0, result.stderr);
 }
+// Asynchronous counterpart of spawnSync for one CLI child. It reports the same
+// fields, so the assertions stay identical, and it lets independent children
+// run at the same time instead of one after the other.
+function runCliChild(args, options, timeoutMs) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [cli, ...args], {
+      ...options,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, timeoutMs);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      resolve({ error, status: null, signal: null, stdout, stderr });
+    });
+    child.once("close", (status, signal) => {
+      clearTimeout(timer);
+      resolve({
+        error: timedOut
+          ? Object.assign(new Error(`spawnSync ${process.execPath} ETIMEDOUT`), { code: "ETIMEDOUT" })
+          : undefined,
+        status: timedOut ? null : status,
+        signal: timedOut ? "SIGTERM" : signal,
+        stdout,
+        stderr,
+      });
+    });
+  });
+}
 const version = cliBuildVersion(root);
 function fixture(t, environment = process.env) {
   const dataDir = mkdtempSync(path.join(tmpdir(), "minimax-code-smoke-"));
@@ -173,27 +215,26 @@ test("offline smoke children ignore ambient proxy variables", async (t) => {
     "all_proxy",
     "no_proxy",
   ];
-  for (const name of proxyNames) {
-    await t.test(name, (t) => {
-      const proxyValue = name.toLowerCase() === "no_proxy" ? "*" : "http://127.0.0.1:9";
-      const environment = Object.freeze({
-        ...process.env,
-        ...Object.fromEntries(proxyNames.map((key) => [key, ""])),
-        [name]: proxyValue,
-      });
-      const options = fixture(t, environment);
-      for (const key of proxyNames) assert.equal(options.env[key], "");
-      const result = spawnSync(process.execPath, [cli, "provider", "list"], {
-        ...options,
-        encoding: "utf8",
-        timeout: runtimeTimeoutMs,
-      });
-      assertSuccessfulChild(result);
-      assert.match(result.stdout, /minimax/);
-      // Catalog requests are optional; the fixture still rejects any real network access.
-      assert.equal(environment[name], proxyValue);
+  // Each case is an independent fixture that starts its own CLI child, and
+  // every child may use the full runtime budget. Running the eight cases
+  // concurrently keeps all of them intact while removing the serial sum of
+  // their runtimes, which on Windows is larger than the acceptance budget
+  // that contains this suite.
+  await Promise.all(proxyNames.map((name) => t.test(name, async (t) => {
+    const proxyValue = name.toLowerCase() === "no_proxy" ? "*" : "http://127.0.0.1:9";
+    const environment = Object.freeze({
+      ...process.env,
+      ...Object.fromEntries(proxyNames.map((key) => [key, ""])),
+      [name]: proxyValue,
     });
-  }
+    const options = fixture(t, environment);
+    for (const key of proxyNames) assert.equal(options.env[key], "");
+    const result = await runCliChild(["provider", "list"], options, runtimeTimeoutMs);
+    assertSuccessfulChild(result);
+    assert.match(result.stdout, /minimax/);
+    // Catalog requests are optional; the fixture still rejects any real network access.
+    assert.equal(environment[name], proxyValue);
+  })));
 });
 test("native SQLite binding opens and reads a real database", () => {
   const db = new Database(":memory:");

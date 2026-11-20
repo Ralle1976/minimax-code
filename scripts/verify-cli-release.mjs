@@ -66,8 +66,13 @@ try {
   const db = new Database(':memory:');
   try { assert.equal(db.prepare('select 42 as value').get().value, 42); } finally { db.close(); }
   assert.match(execFileSync(require('@vscode/ripgrep').rgPath, ['--version'], { encoding: 'utf8' }), /ripgrep/);
+  // The budget has to cover the two suites this step runs. Measured on a
+  // Windows host, test/smoke.test.mjs needs about 105 s and test/byok.test.mjs
+  // about 242 s, and both run in the same process, so the sum is the worst
+  // case a serial runner can hit. The timeout below leaves roughly 45 percent
+  // headroom over that measured worst case for a loaded machine.
   execFileSync(process.execPath, ['--test', 'test/smoke.test.mjs', 'test/byok.test.mjs'], {
-    cwd: root, env: { ...env, MCODE_TEST_CLI: path.join(installed, 'cli.js') }, stdio: 'inherit', timeout: 240000,
+    cwd: root, env: { ...env, MCODE_TEST_CLI: path.join(installed, 'cli.js') }, stdio: 'inherit', timeout: 600000,
   });
   if (process.env.MCODE_VERIFY_REPORT_DIR) {
     mkdirSync(process.env.MCODE_VERIFY_REPORT_DIR, { recursive: true });
